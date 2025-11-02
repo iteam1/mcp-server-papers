@@ -9,6 +9,8 @@ from mcp.server.lowlevel import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
+from utils import validate_arxiv_params
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,16 +19,25 @@ logger = logging.getLogger(__name__)
 # Tools
 async def send_query(params: str) -> str:
     """
-    Send a query to arXiv API and return the response.
+    Send a validated query to arXiv API and return the response.
     """
     try:
+        # Validate parameters first
+        validated_params = validate_arxiv_params(params)
+        logger.info(f"Parameters validated successfully: {list(validated_params.keys())}")
+        
         url = f"http://export.arxiv.org/api/query?{params}"
-        logger.info(f"Sending query to arXiv: {url}")
+        logger.info(f"Sending validated query to arXiv: {url}")
 
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             response = await client.get(url)
             response.raise_for_status()
             return response.text
+            
+    except ValueError as e:
+        # Validation error - return helpful message
+        logger.error(f"Parameter validation error: {e}")
+        raise ValueError(f"Invalid query parameters: {e}")
     except httpx.RequestError as e:
         logger.error(f"Network error querying arXiv: {e}")
         raise ValueError(f"Failed to query arXiv API: {e}")
