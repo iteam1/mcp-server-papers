@@ -9,7 +9,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
-from utils import validate_arxiv_params
+from utils import validate_arxiv_params, validate_arxiv_id
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,8 +24,10 @@ async def send_query(params: str) -> str:
     try:
         # Validate parameters first
         validated_params = validate_arxiv_params(params)
-        logger.info(f"Parameters validated successfully: {list(validated_params.keys())}")
-        
+        logger.info(
+            f"Parameters validated successfully: {list(validated_params.keys())}"
+        )
+
         url = f"http://export.arxiv.org/api/query?{params}"
         logger.info(f"Sending validated query to arXiv: {url}")
 
@@ -33,7 +35,7 @@ async def send_query(params: str) -> str:
             response = await client.get(url)
             response.raise_for_status()
             return response.text
-            
+
     except ValueError as e:
         # Validation error - return helpful message
         logger.error(f"Parameter validation error: {e}")
@@ -44,6 +46,70 @@ async def send_query(params: str) -> str:
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error from arXiv: {e.response.status_code}")
         raise ValueError(f"arXiv API returned error: {e.response.status_code}")
+
+
+async def download_paper(arxiv_id: str, save_path: str = None) -> str:
+    """
+    Download a paper PDF from arXiv.
+
+    Args:
+        arxiv_id: arXiv ID (e.g., "2510.26784" or "math.GT/0309136v1")
+        save_path: Optional path to save the PDF (defaults to current directory)
+
+    Returns:
+        Success message with file path
+    """
+    try:
+        # Validate arXiv ID
+        validated_id = validate_arxiv_id(arxiv_id)
+
+        # Construct PDF URL
+        pdf_url = f"https://arxiv.org/pdf/{validated_id}.pdf"
+        logger.info(f"Downloading paper from: {pdf_url}")
+
+        # Set default save path
+        if save_path is None:
+            save_path = f"{validated_id.replace('/', '_')}.pdf"
+
+        # Ensure save path has .pdf extension
+        if not save_path.endswith(".pdf"):
+            save_path += ".pdf"
+
+        # Download the PDF
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            response = await client.get(pdf_url)
+            response.raise_for_status()
+
+            # Save to file
+            file_path = Path(save_path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(file_path, "wb") as f:
+                f.write(response.content)
+
+            file_size = len(response.content) / (1024 * 1024)  # MB
+            logger.info(
+                f"Successfully downloaded {validated_id} ({file_size:.2f} MB) to {file_path}"
+            )
+
+            return f"Successfully downloaded paper '{validated_id}' ({file_size:.2f} MB) to: {file_path.absolute()}"
+
+    except ValueError as e:
+        # Validation error
+        logger.error(f"Paper download validation error: {e}")
+        raise ValueError(f"Invalid arXiv ID: {e}")
+    except httpx.RequestError as e:
+        logger.error(f"Network error downloading paper: {e}")
+        raise ValueError(f"Failed to download paper: {e}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error downloading paper: {e.response.status_code}")
+        if e.response.status_code == 404:
+            raise ValueError(f"Paper '{arxiv_id}' not found on arXiv")
+        else:
+            raise ValueError(f"arXiv server error: {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"Unexpected error downloading paper: {e}")
+        raise ValueError(f"Failed to save paper: {e}")
 
 
 # Read resource
@@ -100,7 +166,35 @@ def main(port: int, transport: str) -> None:
                     },
                     "required": ["query"],
                 },
-            )
+            ),
+            types.Tool(
+                name="download_paper",
+                title="Download arXiv Paper PDF",
+                description="Download a paper PDF from arXiv by its ID. Saves the PDF file locally.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "arxiv_id": {
+                            "type": "string",
+                            "description": "arXiv paper ID (e.g., '2510.26784', '2301.00001v1', or 'math.GT/0309136v1')",
+                            "examples": [
+                                "2510.26784",
+                                "2301.00001v1",
+                                "math.GT/0309136v1",
+                            ],
+                        },
+                        "save_path": {
+                            "type": "string",
+                            "description": "Optional path to save the PDF file. If not provided, saves to current directory with arxiv_id as filename.",
+                            "examples": [
+                                "papers/quantum_paper.pdf",
+                                "/home/user/downloads/paper.pdf",
+                            ],
+                        },
+                    },
+                    "required": ["arxiv_id"],
+                },
+            ),
         ]
 
     @app.call_tool()
@@ -117,6 +211,21 @@ def main(port: int, transport: str) -> None:
             except Exception as e:
                 logger.error(f"Error executing send_query tool: {e}")
                 return [types.TextContent(type="text", text=f"Error: {e}")]
+
+        elif name == "download_paper":
+            if "arxiv_id" not in arguments:
+                raise ValueError("Missing arxiv_id parameter")
+
+            try:
+                arxiv_id = arguments["arxiv_id"]
+                save_path = arguments.get("save_path")  # Optional parameter
+
+                result = await download_paper(arxiv_id, save_path)
+                return [types.TextContent(type="text", text=result)]
+            except Exception as e:
+                logger.error(f"Error executing download_paper tool: {e}")
+                return [types.TextContent(type="text", text=f"Error: {e}")]
+
         else:
             raise ValueError(f"Unknown tool: {name}")
 

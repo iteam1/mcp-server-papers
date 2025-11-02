@@ -18,7 +18,19 @@
 
 ## ✨ Features
 
-Support Validation Categories:
+### 🔍 Search & Discovery
+- **Advanced Search**: Query arXiv papers with field-specific searches (`ti:`, `au:`, `abs:`, etc.)
+- **Boolean Logic**: Support for `AND`, `OR`, `ANDNOT` operators
+- **Flexible Sorting**: Sort by relevance, submission date, or last updated
+- **ID-based Lookup**: Direct paper retrieval by arXiv ID
+
+### 📥 Paper Download
+- **PDF Download**: Download papers directly by arXiv ID
+- **Flexible Paths**: Save to custom locations or use auto-generated filenames
+- **Progress Tracking**: File size reporting and download status
+- **Error Handling**: Robust validation and error reporting
+
+### 🛡️ Validation Categories:
 
 1. Query Parameter Validation
 - Required parameters: Ensure either `search_query` or `id_list` is provided
