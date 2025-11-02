@@ -1,13 +1,10 @@
-import asyncio
-import logging
-import urllib.request
-from pathlib import Path
-from typing import Any
-
 import anyio
 import click
 import httpx
+import logging
 import mcp.types as types
+from pathlib import Path
+from typing import Any
 from mcp.server.lowlevel import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
