@@ -30,6 +30,19 @@
 - **Progress Tracking**: File size reporting and download status
 - **Error Handling**: Robust validation and error reporting
 
+### 🌐 Online Paper Reading
+- **HTML Access**: Fetch arXiv papers in HTML format for analysis
+- **Direct URL Support**: Access papers via arXiv HTML interface
+- **Full Content**: Get complete paper content including text and structure
+- **Research Integration**: Perfect for AI agents and research tools
+
+### 🖼️ Image Download & Analysis
+- **Universal Image Support**: Download images from any URL (PNG, JPEG, GIF, WebP)
+- **AI Agent Compatible**: Returns file paths for vision model analysis
+- **Smart Storage**: Automatic file naming with conflict resolution
+- **Format Detection**: Automatic image format detection from URL/headers
+- **Research Figures**: Perfect for downloading and analyzing paper figures
+
 ### 🛡️ Validation Categories:
 
 1. Query Parameter Validation
@@ -98,3 +111,5 @@ Or:
 - [arXiv API Basics](https://info.arxiv.org/help/api/basics.html)
 
 - [arXiv API User Manual](https://info.arxiv.org/help/api/user-manual.html)
+
+- [ArXiv MCP Server](https://github.com/blazickjp/arxiv-mcp-server)
