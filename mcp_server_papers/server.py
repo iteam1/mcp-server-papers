@@ -246,6 +246,23 @@ def read_api_specification() -> str:
         raise ValueError(f"Could not load API documentation: {e}")
 
 
+def read_workflow_guide() -> str:
+    """Read the AI agent workflow guide from the docs directory."""
+    try:
+        # Get the project root directory
+        current_file = Path(__file__)
+        project_root = current_file.parent.parent
+        workflow_doc_path = project_root / "docs" / "WORKFLOW.md"
+
+        if not workflow_doc_path.exists():
+            raise FileNotFoundError(f"Workflow documentation not found at {workflow_doc_path}")
+
+        return workflow_doc_path.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Failed to read workflow guide: {e}")
+        raise ValueError(f"Could not load workflow documentation: {e}")
+
+
 # Define CLI
 @click.command()
 @click.option("--port", default=8000, help="Port to listen on for server")
@@ -421,6 +438,12 @@ def main(port: int, transport: str) -> None:
                 name="API Specification",
                 description="API specification for this server",
                 mimeType="text/markdown",
+            ),
+            types.Resource(
+                uri="docs://workflow",
+                name="AI Agent Workflow",
+                description="Step-by-step workflow guide for AI agents to read papers online using read_online and get_image tools",
+                mimeType="text/markdown",
             )
         ]
 
@@ -430,6 +453,15 @@ def main(port: int, transport: str) -> None:
         if uri_str == "docs://api":
             try:
                 content = read_api_specification()
+                return [
+                    ReadResourceContents(content=content, mime_type="text/markdown")
+                ]
+            except Exception as e:
+                logger.error(f"Error reading resource {uri}: {e}")
+                raise ValueError(f"Failed to read resource {uri}: {e}")
+        elif uri_str == "docs://workflow":
+            try:
+                content = read_workflow_guide()
                 return [
                     ReadResourceContents(content=content, mime_type="text/markdown")
                 ]
