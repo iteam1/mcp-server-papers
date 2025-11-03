@@ -275,8 +275,11 @@ def main(port: int, transport: str) -> None:
                             "description": "arXiv API query parameters (e.g., 'search_query=au:einstein&max_results=10' or 'id_list=1234.5678'). See API documentation for full syntax.",
                             "examples": [
                                 "search_query=ti:quantum&max_results=5",
-                                "search_query=au:einstein+AND+ti:relativity",
-                                "id_list=2301.00001,2301.00002",
+                                "search_query=au:del_maestro+AND+ti:checkerboard",
+                                "search_query=ti:%22quantum+criticality%22&sortBy=lastUpdatedDate&sortOrder=descending",
+                                "search_query=cat:cond-mat.mes-hall+AND+abs:graphene&max_results=20",
+                                "id_list=cond-mat/0207270v1,2301.00001",
+                                "search_query=all:electron&start=10&max_results=50",
                             ],
                         }
                     },
