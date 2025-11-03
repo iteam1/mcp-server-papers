@@ -1,9 +1,9 @@
 import anyio
 import click
+import hashlib
 import httpx
 import logging
 import mcp.types as types
-import tempfile
 from pathlib import Path
 from typing import Any
 from mcp.server.lowlevel import Server
@@ -203,7 +203,6 @@ async def get_image(image_url: str) -> str:
             downloads_dir.mkdir(exist_ok=True)
             
             # Generate filename from URL hash to avoid conflicts
-            import hashlib
             url_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
             filename = f"image_{url_hash}.{file_extension}"
             file_path = downloads_dir / filename
