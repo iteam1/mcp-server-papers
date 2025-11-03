@@ -3,6 +3,7 @@ import click
 import httpx
 import logging
 import mcp.types as types
+import tempfile
 from pathlib import Path
 from typing import Any
 from mcp.server.lowlevel import Server
@@ -161,6 +162,72 @@ async def read_online_paper(arxiv_id: str) -> str:
         raise ValueError(f"Failed to fetch paper: {e}")
 
 
+async def get_image(image_url: str) -> str:
+    """
+    Download an image from URL and return the file path where it's saved.
+
+    Args:
+        image_url: Direct URL to an image file
+
+    Returns:
+        File path where the image is downloaded for AI agent analysis
+    """
+    try:
+        logger.info(f"Downloading image from: {image_url}")
+
+        # Download the image
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
+            response = await client.get(image_url)
+            response.raise_for_status()
+
+            # Get image content
+            image_bytes = response.content
+            file_size = len(image_bytes)
+            
+            # Determine image format from URL or content type
+            content_type = response.headers.get('content-type', '').lower()
+            if 'png' in content_type or image_url.lower().endswith('.png'):
+                file_extension = 'png'
+            elif 'jpeg' in content_type or 'jpg' in content_type or image_url.lower().endswith(('.jpg', '.jpeg')):
+                file_extension = 'jpg'
+            elif 'gif' in content_type or image_url.lower().endswith('.gif'):
+                file_extension = 'gif'
+            elif 'webp' in content_type or image_url.lower().endswith('.webp'):
+                file_extension = 'webp'
+            else:
+                # Default to png if format unclear
+                file_extension = 'png'
+
+            # Create downloads directory if it doesn't exist
+            downloads_dir = Path("downloaded")
+            downloads_dir.mkdir(exist_ok=True)
+            
+            # Generate filename from URL hash to avoid conflicts
+            import hashlib
+            url_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
+            filename = f"image_{url_hash}.{file_extension}"
+            file_path = downloads_dir / filename
+
+            # Save image to file
+            with open(file_path, 'wb') as f:
+                f.write(image_bytes)
+
+            logger.info(f"Successfully downloaded image ({file_size:,} bytes) to {file_path}")
+
+            # Return just the file path
+            return str(file_path.absolute())
+
+    except httpx.RequestError as e:
+        logger.error(f"Network error downloading image: {e}")
+        raise ValueError(f"Failed to download image: {e}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error downloading image: {e.response.status_code}")
+        raise ValueError(f"Server error {e.response.status_code} for image: {image_url}")
+    except Exception as e:
+        logger.error(f"Unexpected error analyzing image: {e}")
+        raise ValueError(f"Failed to analyze image: {e}")
+
+
 # Read resource
 def read_api_specification() -> str:
     """Read the API specification from the docs directory."""
@@ -264,6 +331,26 @@ def main(port: int, transport: str) -> None:
                     "required": ["arxiv_id"],
                 },
             ),
+            types.Tool(
+                name="get_image",
+                title="Get Image from URL",
+                description="Download an image from URL and return the local file path.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "image_url": {
+                            "type": "string",
+                            "description": "Direct URL to an image file (PNG, JPEG, GIF, WebP)",
+                            "examples": [
+                                "https://arxiv.org/html/2510.04618/x1.png",
+                                "https://example.com/chart.png",
+                                "https://research-paper.com/figures/figure1.jpg",
+                            ],
+                        },
+                    },
+                    "required": ["image_url"],
+                },
+            ),
         ]
 
     @app.call_tool()
@@ -305,6 +392,18 @@ def main(port: int, transport: str) -> None:
                 return [types.TextContent(type="text", text=result)]
             except Exception as e:
                 logger.error(f"Error executing read_online tool: {e}")
+                return [types.TextContent(type="text", text=f"Error: {e}")]
+
+        elif name == "get_image":
+            if "image_url" not in arguments:
+                raise ValueError("Missing image_url parameter")
+
+            try:
+                image_url = arguments["image_url"]
+                result = await get_image(image_url)
+                return [types.TextContent(type="text", text=result)]
+            except Exception as e:
+                logger.error(f"Error executing get_image tool: {e}")
                 return [types.TextContent(type="text", text=f"Error: {e}")]
 
         else:
