@@ -1,8 +1,6 @@
-# AI Agent Workflow: Reading ArXiv Papers Online
+# Workflow: Reading ArXiv Papers Online
 
-## Quick Workflow for AI Agents
-
-### Step 1: Get Text Content
+## Step 1: Get Text Content
 Use `read_online` tool to fetch the paper's HTML content:
 ```json
 {
@@ -11,14 +9,14 @@ Use `read_online` tool to fetch the paper's HTML content:
 }
 ```
 
-### Step 2: Extract Image URLs
+## Step 2: Extract Image URLs
 From the HTML content, extract all image URLs (look for `<img src="...">` tags).
 Common arXiv image patterns:
 - `x1.png`, `x2.png`, `x3.png` (Figure 1, 2, 3...)  
 - `figures/diagram.png`
 - Relative URLs need base: `https://arxiv.org/html/{arxiv_id}/`
 
-### Step 3: Download Images Sequentially  
+## Step 3: Download Images Sequentially  
 Use `get_image` tool for each image found:
 ```json
 {
@@ -27,10 +25,10 @@ Use `get_image` tool for each image found:
 }
 ```
 
-### Step 4: Analyze Images
+## Step 4: Analyze Images
 Read each downloaded image file to understand visual content (charts, diagrams, etc.).
 
-### Step 5: Provide Comprehensive Response
+## Step 5: Provide Comprehensive Response
 Return analysis in this format:
 
 ```
