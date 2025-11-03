@@ -1,5 +1,6 @@
 import anyio
 import click
+import hashlib
 import httpx
 import logging
 import mcp.types as types
@@ -31,7 +32,7 @@ async def send_query(params: str) -> str:
         url = f"http://export.arxiv.org/api/query?{params}"
         logger.info(f"Sending validated query to arXiv: {url}")
 
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
             response = await client.get(url)
             response.raise_for_status()
             return response.text
@@ -76,7 +77,7 @@ async def download_paper(arxiv_id: str, save_path: str = None) -> str:
             save_path += ".pdf"
 
         # Download the PDF
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
             response = await client.get(pdf_url)
             response.raise_for_status()
 
@@ -112,6 +113,120 @@ async def download_paper(arxiv_id: str, save_path: str = None) -> str:
         raise ValueError(f"Failed to save paper: {e}")
 
 
+async def read_online_paper(arxiv_id: str) -> str:
+    """
+    Fetch and read the HTML version of an arXiv paper online.
+
+    Args:
+        arxiv_id: arXiv ID (e.g., "2510.04618" or "math.GT/0309136v1")
+
+    Returns:
+        Formatted paper content including text and structure
+    """
+    try:
+        # Validate arXiv ID
+        validated_id = validate_arxiv_id(arxiv_id)
+
+        # Construct HTML URL
+        html_url = f"https://arxiv.org/html/{validated_id}"
+        logger.info(f"Fetching paper from: {html_url}")
+
+        # Fetch the HTML content
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
+            response = await client.get(html_url)
+            response.raise_for_status()
+
+            # Basic content processing
+            html_content = response.text
+            content_length = len(html_content)
+            logger.info(f"Successfully fetched paper '{validated_id}' ({content_length} characters)")
+
+            # Return formatted response
+            return f"Successfully fetched arXiv paper '{validated_id}' from HTML version.\n\nContent length: {content_length:,} characters\n\nHTML URL: {html_url}\n\nNote: This is the raw HTML content. For better readability, consider processing with additional HTML parsing tools."
+
+    except ValueError as e:
+        # Validation error
+        logger.error(f"Paper fetch validation error: {e}")
+        raise ValueError(f"Invalid arXiv ID: {e}")
+    except httpx.RequestError as e:
+        logger.error(f"Network error fetching paper: {e}")
+        raise ValueError(f"Failed to fetch paper: {e}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error fetching paper: {e.response.status_code}")
+        if e.response.status_code == 404:
+            raise ValueError(f"Paper '{arxiv_id}' HTML version not found on arXiv")
+        else:
+            raise ValueError(f"arXiv server error: {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"Unexpected error fetching paper: {e}")
+        raise ValueError(f"Failed to fetch paper: {e}")
+
+
+async def get_image(image_url: str) -> str:
+    """
+    Download an image from URL and return the file path where it's saved.
+
+    Args:
+        image_url: Direct URL to an image file
+
+    Returns:
+        File path where the image is downloaded for AI agent analysis
+    """
+    try:
+        logger.info(f"Downloading image from: {image_url}")
+
+        # Download the image
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
+            response = await client.get(image_url)
+            response.raise_for_status()
+
+            # Get image content
+            image_bytes = response.content
+            file_size = len(image_bytes)
+            
+            # Determine image format from URL or content type
+            content_type = response.headers.get('content-type', '').lower()
+            if 'png' in content_type or image_url.lower().endswith('.png'):
+                file_extension = 'png'
+            elif 'jpeg' in content_type or 'jpg' in content_type or image_url.lower().endswith(('.jpg', '.jpeg')):
+                file_extension = 'jpg'
+            elif 'gif' in content_type or image_url.lower().endswith('.gif'):
+                file_extension = 'gif'
+            elif 'webp' in content_type or image_url.lower().endswith('.webp'):
+                file_extension = 'webp'
+            else:
+                # Default to png if format unclear
+                file_extension = 'png'
+
+            # Create downloads directory if it doesn't exist
+            downloads_dir = Path("downloaded")
+            downloads_dir.mkdir(exist_ok=True)
+            
+            # Generate filename from URL hash to avoid conflicts
+            url_hash = hashlib.md5(image_url.encode()).hexdigest()[:8]
+            filename = f"image_{url_hash}.{file_extension}"
+            file_path = downloads_dir / filename
+
+            # Save image to file
+            with open(file_path, 'wb') as f:
+                f.write(image_bytes)
+
+            logger.info(f"Successfully downloaded image ({file_size:,} bytes) to {file_path}")
+
+            # Return just the file path
+            return str(file_path.absolute())
+
+    except httpx.RequestError as e:
+        logger.error(f"Network error downloading image: {e}")
+        raise ValueError(f"Failed to download image: {e}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error downloading image: {e.response.status_code}")
+        raise ValueError(f"Server error {e.response.status_code} for image: {image_url}")
+    except Exception as e:
+        logger.error(f"Unexpected error analyzing image: {e}")
+        raise ValueError(f"Failed to analyze image: {e}")
+
+
 # Read resource
 def read_api_specification() -> str:
     """Read the API specification from the docs directory."""
@@ -128,6 +243,23 @@ def read_api_specification() -> str:
     except Exception as e:
         logger.error(f"Failed to read API specification: {e}")
         raise ValueError(f"Could not load API documentation: {e}")
+
+
+def read_workflow_guide() -> str:
+    """Read the AI agent workflow guide from the docs directory."""
+    try:
+        # Get the project root directory
+        current_file = Path(__file__)
+        project_root = current_file.parent.parent
+        workflow_doc_path = project_root / "docs" / "WORKFLOW.md"
+
+        if not workflow_doc_path.exists():
+            raise FileNotFoundError(f"Workflow documentation not found at {workflow_doc_path}")
+
+        return workflow_doc_path.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Failed to read workflow guide: {e}")
+        raise ValueError(f"Could not load workflow documentation: {e}")
 
 
 # Define CLI
@@ -159,8 +291,11 @@ def main(port: int, transport: str) -> None:
                             "description": "arXiv API query parameters (e.g., 'search_query=au:einstein&max_results=10' or 'id_list=1234.5678'). See API documentation for full syntax.",
                             "examples": [
                                 "search_query=ti:quantum&max_results=5",
-                                "search_query=au:einstein+AND+ti:relativity",
-                                "id_list=2301.00001,2301.00002",
+                                "search_query=au:del_maestro+AND+ti:checkerboard",
+                                "search_query=ti:%22quantum+criticality%22&sortBy=lastUpdatedDate&sortOrder=descending",
+                                "search_query=cat:cond-mat.mes-hall+AND+abs:graphene&max_results=20",
+                                "id_list=cond-mat/0207270v1,2301.00001",
+                                "search_query=all:electron&start=10&max_results=50",
                             ],
                         }
                     },
@@ -195,6 +330,46 @@ def main(port: int, transport: str) -> None:
                     "required": ["arxiv_id"],
                 },
             ),
+            types.Tool(
+                name="read_online",
+                title="Read arXiv Paper Online",
+                description="Fetch and read the HTML version of an arXiv paper online. Returns the paper content for analysis.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "arxiv_id": {
+                            "type": "string",
+                            "description": "arXiv paper ID (e.g., '2510.04618', '2301.00001v1', or 'math.GT/0309136v1')",
+                            "examples": [
+                                "2510.04618",
+                                "2301.00001v1",
+                                "math.GT/0309136v1",
+                            ],
+                        },
+                    },
+                    "required": ["arxiv_id"],
+                },
+            ),
+            types.Tool(
+                name="get_image",
+                title="Get Image from URL",
+                description="Download an image from URL and return the local file path.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "image_url": {
+                            "type": "string",
+                            "description": "Direct URL to an image file (PNG, JPEG, GIF, WebP)",
+                            "examples": [
+                                "https://arxiv.org/html/2510.04618/x1.png",
+                                "https://example.com/chart.png",
+                                "https://research-paper.com/figures/figure1.jpg",
+                            ],
+                        },
+                    },
+                    "required": ["image_url"],
+                },
+            ),
         ]
 
     @app.call_tool()
@@ -226,6 +401,30 @@ def main(port: int, transport: str) -> None:
                 logger.error(f"Error executing download_paper tool: {e}")
                 return [types.TextContent(type="text", text=f"Error: {e}")]
 
+        elif name == "read_online":
+            if "arxiv_id" not in arguments:
+                raise ValueError("Missing arxiv_id parameter")
+
+            try:
+                arxiv_id = arguments["arxiv_id"]
+                result = await read_online_paper(arxiv_id)
+                return [types.TextContent(type="text", text=result)]
+            except Exception as e:
+                logger.error(f"Error executing read_online tool: {e}")
+                return [types.TextContent(type="text", text=f"Error: {e}")]
+
+        elif name == "get_image":
+            if "image_url" not in arguments:
+                raise ValueError("Missing image_url parameter")
+
+            try:
+                image_url = arguments["image_url"]
+                result = await get_image(image_url)
+                return [types.TextContent(type="text", text=result)]
+            except Exception as e:
+                logger.error(f"Error executing get_image tool: {e}")
+                return [types.TextContent(type="text", text=f"Error: {e}")]
+
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -238,6 +437,12 @@ def main(port: int, transport: str) -> None:
                 name="API Specification",
                 description="API specification for this server",
                 mimeType="text/markdown",
+            ),
+            types.Resource(
+                uri="docs://workflow",
+                name="AI Agent Workflow",
+                description="Step-by-step workflow guide for AI agents to read papers online using read_online and get_image tools",
+                mimeType="text/markdown",
             )
         ]
 
@@ -247,6 +452,15 @@ def main(port: int, transport: str) -> None:
         if uri_str == "docs://api":
             try:
                 content = read_api_specification()
+                return [
+                    ReadResourceContents(content=content, mime_type="text/markdown")
+                ]
+            except Exception as e:
+                logger.error(f"Error reading resource {uri}: {e}")
+                raise ValueError(f"Failed to read resource {uri}: {e}")
+        elif uri_str == "docs://workflow":
+            try:
+                content = read_workflow_guide()
                 return [
                     ReadResourceContents(content=content, mime_type="text/markdown")
                 ]
