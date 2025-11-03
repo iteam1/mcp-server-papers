@@ -31,7 +31,7 @@ async def send_query(params: str) -> str:
         url = f"http://export.arxiv.org/api/query?{params}"
         logger.info(f"Sending validated query to arXiv: {url}")
 
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
             response = await client.get(url)
             response.raise_for_status()
             return response.text
@@ -76,7 +76,7 @@ async def download_paper(arxiv_id: str, save_path: str = None) -> str:
             save_path += ".pdf"
 
         # Download the PDF
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
             response = await client.get(pdf_url)
             response.raise_for_status()
 
