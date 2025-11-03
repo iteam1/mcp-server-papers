@@ -112,6 +112,55 @@ async def download_paper(arxiv_id: str, save_path: str = None) -> str:
         raise ValueError(f"Failed to save paper: {e}")
 
 
+async def read_online_paper(arxiv_id: str) -> str:
+    """
+    Fetch and read the HTML version of an arXiv paper online.
+
+    Args:
+        arxiv_id: arXiv ID (e.g., "2510.04618" or "math.GT/0309136v1")
+
+    Returns:
+        Formatted paper content including text and structure
+    """
+    try:
+        # Validate arXiv ID
+        validated_id = validate_arxiv_id(arxiv_id)
+
+        # Construct HTML URL
+        html_url = f"https://arxiv.org/html/{validated_id}"
+        logger.info(f"Fetching paper from: {html_url}")
+
+        # Fetch the HTML content
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
+            response = await client.get(html_url)
+            response.raise_for_status()
+
+            # Basic content processing
+            html_content = response.text
+            content_length = len(html_content)
+            logger.info(f"Successfully fetched paper '{validated_id}' ({content_length} characters)")
+
+            # Return formatted response
+            return f"Successfully fetched arXiv paper '{validated_id}' from HTML version.\n\nContent length: {content_length:,} characters\n\nHTML URL: {html_url}\n\nNote: This is the raw HTML content. For better readability, consider processing with additional HTML parsing tools."
+
+    except ValueError as e:
+        # Validation error
+        logger.error(f"Paper fetch validation error: {e}")
+        raise ValueError(f"Invalid arXiv ID: {e}")
+    except httpx.RequestError as e:
+        logger.error(f"Network error fetching paper: {e}")
+        raise ValueError(f"Failed to fetch paper: {e}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error fetching paper: {e.response.status_code}")
+        if e.response.status_code == 404:
+            raise ValueError(f"Paper '{arxiv_id}' HTML version not found on arXiv")
+        else:
+            raise ValueError(f"arXiv server error: {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"Unexpected error fetching paper: {e}")
+        raise ValueError(f"Failed to fetch paper: {e}")
+
+
 # Read resource
 def read_api_specification() -> str:
     """Read the API specification from the docs directory."""
@@ -195,6 +244,26 @@ def main(port: int, transport: str) -> None:
                     "required": ["arxiv_id"],
                 },
             ),
+            types.Tool(
+                name="read_online",
+                title="Read arXiv Paper Online",
+                description="Fetch and read the HTML version of an arXiv paper online. Returns the paper content for analysis.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "arxiv_id": {
+                            "type": "string",
+                            "description": "arXiv paper ID (e.g., '2510.04618', '2301.00001v1', or 'math.GT/0309136v1')",
+                            "examples": [
+                                "2510.04618",
+                                "2301.00001v1",
+                                "math.GT/0309136v1",
+                            ],
+                        },
+                    },
+                    "required": ["arxiv_id"],
+                },
+            ),
         ]
 
     @app.call_tool()
@@ -224,6 +293,18 @@ def main(port: int, transport: str) -> None:
                 return [types.TextContent(type="text", text=result)]
             except Exception as e:
                 logger.error(f"Error executing download_paper tool: {e}")
+                return [types.TextContent(type="text", text=f"Error: {e}")]
+
+        elif name == "read_online":
+            if "arxiv_id" not in arguments:
+                raise ValueError("Missing arxiv_id parameter")
+
+            try:
+                arxiv_id = arguments["arxiv_id"]
+                result = await read_online_paper(arxiv_id)
+                return [types.TextContent(type="text", text=result)]
+            except Exception as e:
+                logger.error(f"Error executing read_online tool: {e}")
                 return [types.TextContent(type="text", text=f"Error: {e}")]
 
         else:
