@@ -1,5 +1,6 @@
 """Tests for read_online_paper function."""
 
+import json
 import pytest
 from unittest.mock import AsyncMock, patch
 from mcp_server_papers.server import read_online_paper
@@ -7,7 +8,7 @@ from mcp_server_papers.server import read_online_paper
 
 @pytest.mark.anyio
 async def test_read_online_returns_content(arxiv_html_fixture):
-    """Verify read_online returns extracted text content."""
+    """Verify read_online returns structured JSON with text and figures."""
     arxiv_id = "2510.04618"
 
     with patch("mcp_server_papers.server.httpx.AsyncClient") as mock_client_class:
@@ -22,13 +23,20 @@ async def test_read_online_returns_content(arxiv_html_fixture):
 
         result = await read_online_paper(arxiv_id)
 
-        # Result should contain extracted text
+        # Result should be JSON
         assert result is not None
-        assert len(result) > 0
-        # Should be readable text (no HTML tags)
-        assert "<" not in result or "<" in result  # May have some markup, but much less
+        data = json.loads(result)
+
+        # Should have required fields
+        assert "arxiv_id" in data
+        assert "text" in data
+        assert "figures" in data
+
+        assert data["arxiv_id"] == arxiv_id
         # Should preserve meaningful content
-        assert "Quantum" in result or "computing" in result.lower()
+        assert len(data["text"]) > 0
+        # Figures should be a list
+        assert isinstance(data["figures"], list)
 
 
 @pytest.mark.anyio

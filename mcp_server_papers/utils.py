@@ -3,9 +3,10 @@ Validation utilities for arXiv API parameters and HTML extraction.
 """
 
 import re
-from urllib.parse import parse_qs
-from typing import Dict, Any
+from urllib.parse import parse_qs, urljoin
+from typing import Dict, Any, List
 import trafilatura
+from html.parser import HTMLParser
 
 
 def validate_arxiv_id(arxiv_id: str) -> str:
@@ -270,3 +271,76 @@ def extract_paper_text(html: str) -> str:
     except Exception:
         # On parse failure, fall back to raw HTML
         return html
+
+
+def extract_figures(html: str, arxiv_id: str) -> List[Dict[str, str]]:
+    """
+    Extract figure URLs and captions from HTML.
+
+    Finds <img> tags (with or without <figure> wrappers) and builds absolute URLs.
+    Captions come from <figcaption> or alt text.
+
+    Args:
+        html: Raw HTML content from arXiv
+        arxiv_id: Paper's arXiv ID for building absolute URLs
+
+    Returns:
+        List of {url, caption} dicts
+    """
+    if not html or not html.strip():
+        return []
+
+    figures = []
+    base_url = f"https://arxiv.org/html/{arxiv_id}/"
+
+    class FigureParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.in_figure = False
+            self.current_img = None
+            self.current_caption = None
+
+        def handle_starttag(self, tag, attrs):
+            nonlocal figures
+            attrs_dict = dict(attrs)
+
+            if tag == "figure":
+                self.in_figure = True
+            elif tag == "img":
+                src = attrs_dict.get("src")
+                alt = attrs_dict.get("alt", "")
+                if src:
+                    self.current_img = {"src": src, "alt": alt}
+            elif tag == "figcaption":
+                self.current_caption = ""
+
+        def handle_data(self, data):
+            if self.current_caption is not None:
+                self.current_caption += data.strip()
+
+        def handle_endtag(self, tag):
+            nonlocal figures
+            if tag == "figcaption" and self.current_caption:
+                if self.current_img:
+                    url = urljoin(base_url, self.current_img["src"])
+                    caption = self.current_caption
+                    figures.append({"url": url, "caption": caption})
+                    self.current_img = None
+                self.current_caption = None
+            elif tag == "figure":
+                # If we have an image but no caption, use alt text
+                if self.current_img and self.current_caption is None:
+                    url = urljoin(base_url, self.current_img["src"])
+                    caption = self.current_img.get("alt", "Figure")
+                    figures.append({"url": url, "caption": caption})
+                self.in_figure = False
+                self.current_img = None
+
+    try:
+        parser = FigureParser()
+        parser.feed(html)
+    except Exception:
+        # On parse error, return what we found so far
+        pass
+
+    return figures

@@ -2,6 +2,7 @@ import anyio
 import click
 import hashlib
 import httpx
+import json
 import logging
 import mcp.types as types
 from pathlib import Path
@@ -10,7 +11,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
-from .utils import validate_arxiv_params, validate_arxiv_id, extract_paper_text
+from .utils import validate_arxiv_params, validate_arxiv_id, extract_paper_text, extract_figures
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -121,7 +122,7 @@ async def read_online_paper(arxiv_id: str) -> str:
         arxiv_id: arXiv ID (e.g., "2510.04618" or "math.GT/0309136v1")
 
     Returns:
-        Extracted readable text content from the paper
+        JSON with extracted text and figures: {arxiv_id, text, figures: [{url, caption}]}
     """
     try:
         # Validate arXiv ID
@@ -143,7 +144,17 @@ async def read_online_paper(arxiv_id: str) -> str:
             extracted_text = extract_paper_text(html_content)
             logger.info(f"Extracted text: {len(extracted_text)} characters")
 
-            return extracted_text
+            # Extract figures
+            figures = extract_figures(html_content, validated_id)
+            logger.info(f"Extracted {len(figures)} figures")
+
+            # Return structured response
+            response_data = {
+                "arxiv_id": validated_id,
+                "text": extracted_text,
+                "figures": figures
+            }
+            return json.dumps(response_data, ensure_ascii=False)
 
     except ValueError as e:
         # Validation error
@@ -334,7 +345,7 @@ def main(port: int, transport: str) -> None:
             types.Tool(
                 name="read_online",
                 title="Read arXiv Paper Online",
-                description="Fetch and read the HTML version of an arXiv paper online. Returns the paper content for analysis.",
+                description="Fetch and read the HTML version of an arXiv paper online. Returns JSON with extracted text and auto-extracted figure URLs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
