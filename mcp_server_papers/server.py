@@ -11,7 +11,13 @@ from mcp.server.lowlevel import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
-from .utils import validate_arxiv_params, validate_arxiv_id, extract_paper_text, extract_figures
+from .utils import (
+    validate_arxiv_params,
+    validate_arxiv_id,
+    extract_paper_text,
+    extract_figures,
+    parse_arxiv_atom,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -21,7 +27,9 @@ logger = logging.getLogger(__name__)
 # Tools
 async def send_query(params: str) -> str:
     """
-    Send a validated query to arXiv API and return the response.
+    Send a validated query to arXiv API and return parsed results.
+
+    Returns structured JSON: [{arxiv_id, title, authors, abstract, ...}]
     """
     try:
         # Validate parameters first
@@ -36,7 +44,13 @@ async def send_query(params: str) -> str:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
             response = await client.get(url)
             response.raise_for_status()
-            return response.text
+            atom_xml = response.text
+
+            # Parse Atom feed to structured JSON
+            papers = parse_arxiv_atom(atom_xml)
+            logger.info(f"Parsed {len(papers)} papers from Atom feed")
+
+            return json.dumps(papers, ensure_ascii=False)
 
     except ValueError as e:
         # Validation error - return helpful message
@@ -294,7 +308,7 @@ def main(port: int, transport: str) -> None:
             types.Tool(
                 name="send_query",
                 title="Search arXiv Papers",
-                description="Search for academic papers on arXiv using query parameters. Supports field-specific searches (ti:, au:, abs:, etc.) and Boolean operators (AND, OR, ANDNOT).",
+                description="Search for academic papers on arXiv using query parameters. Returns JSON array of papers with arxiv_id, title, authors, abstract, and URLs. Supports field-specific searches (ti:, au:, abs:, etc.) and Boolean operators (AND, OR, ANDNOT).",
                 inputSchema={
                     "type": "object",
                     "properties": {

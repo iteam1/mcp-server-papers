@@ -6,6 +6,7 @@ import re
 from urllib.parse import parse_qs, urljoin
 from typing import Dict, Any, List
 import trafilatura
+import feedparser
 from html.parser import HTMLParser
 
 
@@ -344,3 +345,80 @@ def extract_figures(html: str, arxiv_id: str) -> List[Dict[str, str]]:
         pass
 
     return figures
+
+
+def parse_arxiv_atom(atom_xml: str) -> List[Dict[str, Any]]:
+    """
+    Parse arXiv Atom feed and return structured paper list.
+
+    Extracts arxiv_id, title, authors, abstract, URLs from Atom response.
+
+    Args:
+        atom_xml: Atom XML from arXiv API response
+
+    Returns:
+        List of {arxiv_id, title, authors, abstract, published, pdf_url, html_url, categories}
+    """
+    if not atom_xml or not atom_xml.strip():
+        return []
+
+    try:
+        feed = feedparser.parse(atom_xml)
+    except Exception:
+        return []
+
+    papers = []
+    for entry in feed.get("entries", []):
+        try:
+            # Extract arxiv ID from entry ID (e.g., http://arxiv.org/abs/2510.26784v1)
+            entry_id = entry.get("id", "")
+            arxiv_id = entry_id.split("/abs/")[-1] if "/abs/" in entry_id else ""
+
+            if not arxiv_id:
+                continue
+
+            # Extract authors
+            authors = []
+            for author_entry in entry.get("authors", []):
+                if "name" in author_entry:
+                    authors.append(author_entry["name"])
+
+            # Extract PDF URL
+            pdf_url = ""
+            for link in entry.get("links", []):
+                if link.get("rel") == "related" and "pdf" in link.get("type", ""):
+                    pdf_url = link.get("href", "")
+                    break
+            # Fallback: construct from arxiv_id
+            if not pdf_url:
+                pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
+
+            # Extract HTML URL
+            html_url = ""
+            for link in entry.get("links", []):
+                if link.get("rel") == "alternate":
+                    html_url = link.get("href", "")
+                    break
+
+            # Extract categories
+            categories = []
+            for tag in entry.get("tags", []):
+                if "term" in tag:
+                    categories.append(tag["term"])
+
+            paper = {
+                "arxiv_id": arxiv_id,
+                "title": entry.get("title", "").strip(),
+                "authors": authors,
+                "abstract": entry.get("summary", "").strip(),
+                "published": entry.get("published", ""),
+                "pdf_url": pdf_url,
+                "html_url": html_url,
+                "categories": categories,
+            }
+            papers.append(paper)
+        except Exception:
+            # Skip entries with parse errors
+            continue
+
+    return papers
