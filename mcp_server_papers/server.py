@@ -10,7 +10,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
-from utils import validate_arxiv_params, validate_arxiv_id
+from .utils import validate_arxiv_params, validate_arxiv_id
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
