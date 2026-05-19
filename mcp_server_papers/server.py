@@ -121,7 +121,7 @@ async def read_online_paper(arxiv_id: str) -> str:
         arxiv_id: arXiv ID (e.g., "2510.04618" or "math.GT/0309136v1")
 
     Returns:
-        Formatted paper content including text and structure
+        The paper HTML content
     """
     try:
         # Validate arXiv ID
@@ -136,13 +136,10 @@ async def read_online_paper(arxiv_id: str) -> str:
             response = await client.get(html_url)
             response.raise_for_status()
 
-            # Basic content processing
             html_content = response.text
-            content_length = len(html_content)
-            logger.info(f"Successfully fetched paper '{validated_id}' ({content_length} characters)")
+            logger.info(f"Successfully fetched paper '{validated_id}' ({len(html_content)} characters)")
 
-            # Return formatted response
-            return f"Successfully fetched arXiv paper '{validated_id}' from HTML version.\n\nContent length: {content_length:,} characters\n\nHTML URL: {html_url}\n\nNote: This is the raw HTML content. For better readability, consider processing with additional HTML parsing tools."
+            return html_content
 
     except ValueError as e:
         # Validation error
