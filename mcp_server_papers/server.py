@@ -10,7 +10,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from pydantic import AnyUrl
 
-from .utils import validate_arxiv_params, validate_arxiv_id
+from .utils import validate_arxiv_params, validate_arxiv_id, extract_paper_text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -121,7 +121,7 @@ async def read_online_paper(arxiv_id: str) -> str:
         arxiv_id: arXiv ID (e.g., "2510.04618" or "math.GT/0309136v1")
 
     Returns:
-        The paper HTML content
+        Extracted readable text content from the paper
     """
     try:
         # Validate arXiv ID
@@ -139,7 +139,11 @@ async def read_online_paper(arxiv_id: str) -> str:
             html_content = response.text
             logger.info(f"Successfully fetched paper '{validated_id}' ({len(html_content)} characters)")
 
-            return html_content
+            # Extract readable text
+            extracted_text = extract_paper_text(html_content)
+            logger.info(f"Extracted text: {len(extracted_text)} characters")
+
+            return extracted_text
 
     except ValueError as e:
         # Validation error

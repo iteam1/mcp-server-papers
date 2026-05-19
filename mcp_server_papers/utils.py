@@ -1,10 +1,11 @@
 """
-Validation utilities for arXiv API parameters.
+Validation utilities for arXiv API parameters and HTML extraction.
 """
 
 import re
 from urllib.parse import parse_qs
 from typing import Dict, Any
+import trafilatura
 
 
 def validate_arxiv_id(arxiv_id: str) -> str:
@@ -241,3 +242,31 @@ def validate_submitted_date(date_range: str) -> str:
         raise ValueError("Start date must be before end date in 'submittedDate' range")
 
     return date_range
+
+
+def extract_paper_text(html: str) -> str:
+    """
+    Extract readable text from HTML, stripping markup and noise.
+
+    Uses trafilatura for robust content extraction. Falls back to raw HTML
+    if parsing fails (don't lose content on parser failure).
+
+    Args:
+        html: Raw HTML content from arXiv
+
+    Returns:
+        Extracted text content, or original HTML if extraction fails
+    """
+    if not html or not html.strip():
+        return ""
+
+    try:
+        extracted = trafilatura.extract(html, include_comments=False, favor_precision=True)
+        # Return extracted text if any was found, otherwise fall back to raw HTML
+        if extracted and len(extracted.strip()) > 10:
+            return extracted
+        # If extraction failed or produced minimal content, return original to avoid losing data
+        return html
+    except Exception:
+        # On parse failure, fall back to raw HTML
+        return html
