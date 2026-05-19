@@ -17,6 +17,7 @@ from .utils import (
     extract_paper_text,
     extract_figures,
     parse_arxiv_atom,
+    build_arxiv_query,
 )
 
 # Configure logging
@@ -25,14 +26,40 @@ logger = logging.getLogger(__name__)
 
 
 # Tools
-async def send_query(params: str) -> str:
+async def send_query(
+    title: str = None,
+    author: str = None,
+    abstract: str = None,
+    category: str = None,
+    max_results: int = 10,
+    query: str = None,
+) -> str:
     """
-    Send a validated query to arXiv API and return parsed results.
+    Send a query to arXiv API and return parsed results.
 
+    Supports both structured fields and legacy query string.
     Returns structured JSON: [{arxiv_id, title, authors, abstract, ...}]
     """
     try:
-        # Validate parameters first
+        # Decide which input format to use
+        if query:
+            # Legacy: use raw query string
+            params = query
+            logger.info("Using legacy query string")
+        elif any([title, author, abstract, category]):
+            # Structured: build query from fields
+            params = build_arxiv_query(
+                title=title,
+                author=author,
+                abstract=abstract,
+                category=category,
+                max_results=max_results,
+            )
+            logger.info(f"Built structured query: {params}")
+        else:
+            raise ValueError("Must provide either 'query' or at least one of: title, author, abstract, category")
+
+        # Validate parameters
         validated_params = validate_arxiv_params(params)
         logger.info(
             f"Parameters validated successfully: {list(validated_params.keys())}"
@@ -308,24 +335,36 @@ def main(port: int, transport: str) -> None:
             types.Tool(
                 name="send_query",
                 title="Search arXiv Papers",
-                description="Search for academic papers on arXiv using query parameters. Returns JSON array of papers with arxiv_id, title, authors, abstract, and URLs. Supports field-specific searches (ti:, au:, abs:, etc.) and Boolean operators (AND, OR, ANDNOT).",
+                description="Search for academic papers on arXiv. Returns JSON array of papers with arxiv_id, title, authors, abstract, and URLs. Use structured fields (title, author, etc.) or legacy query string.",
                 inputSchema={
                     "type": "object",
                     "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Search in paper title (e.g., 'quantum computing')",
+                        },
+                        "author": {
+                            "type": "string",
+                            "description": "Search by author name (e.g., 'Einstein')",
+                        },
+                        "abstract": {
+                            "type": "string",
+                            "description": "Search in abstract (e.g., 'entanglement')",
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "arXiv category (e.g., 'quant-ph', 'cs.AI')",
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Max results (default 10, max 2000)",
+                            "default": 10,
+                        },
                         "query": {
                             "type": "string",
-                            "description": "arXiv API query parameters (e.g., 'search_query=au:einstein&max_results=10' or 'id_list=1234.5678'). See API documentation for full syntax.",
-                            "examples": [
-                                "search_query=ti:quantum&max_results=5",
-                                "search_query=au:del_maestro+AND+ti:checkerboard",
-                                "search_query=ti:%22quantum+criticality%22&sortBy=lastUpdatedDate&sortOrder=descending",
-                                "search_query=cat:cond-mat.mes-hall+AND+abs:graphene&max_results=20",
-                                "id_list=cond-mat/0207270v1,2301.00001",
-                                "search_query=all:electron&start=10&max_results=50",
-                            ],
-                        }
+                            "description": "(Legacy) Raw query string. Use structured fields above instead. E.g., 'search_query=au:einstein&max_results=10'",
+                        },
                     },
-                    "required": ["query"],
                 },
             ),
             types.Tool(
@@ -403,11 +442,15 @@ def main(port: int, transport: str) -> None:
         name: str, arguments: dict[str, Any]
     ) -> list[types.ContentBlock]:
         if name == "send_query":
-            if "query" not in arguments:
-                raise ValueError("Missing query parameter")
-
             try:
-                response = await send_query(arguments["query"])
+                response = await send_query(
+                    title=arguments.get("title"),
+                    author=arguments.get("author"),
+                    abstract=arguments.get("abstract"),
+                    category=arguments.get("category"),
+                    max_results=arguments.get("max_results", 10),
+                    query=arguments.get("query"),
+                )
                 return [types.TextContent(type="text", text=response)]
             except Exception as e:
                 logger.error(f"Error executing send_query tool: {e}")

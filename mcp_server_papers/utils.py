@@ -3,8 +3,8 @@ Validation utilities for arXiv API parameters and HTML extraction.
 """
 
 import re
-from urllib.parse import parse_qs, urljoin
-from typing import Dict, Any, List
+from urllib.parse import parse_qs, urljoin, quote
+from typing import Dict, Any, List, Optional
 import trafilatura
 import feedparser
 from html.parser import HTMLParser
@@ -345,6 +345,93 @@ def extract_figures(html: str, arxiv_id: str) -> List[Dict[str, str]]:
         pass
 
     return figures
+
+
+def build_arxiv_query(
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    abstract: Optional[str] = None,
+    category: Optional[str] = None,
+    all_fields: Optional[str] = None,
+    max_results: int = 10,
+    start: int = 0,
+    sort_by: Optional[str] = None,
+    sort_order: Optional[str] = None,
+) -> str:
+    """
+    Build an arXiv API query string from structured parameters.
+
+    Combines fields with AND, quotes phrases, URL-encodes result.
+
+    Args:
+        title: Search in title
+        author: Search in author
+        abstract: Search in abstract
+        category: arXiv category (e.g., "quant-ph")
+        all_fields: Search in all fields
+        max_results: Max results (clamped to 2000)
+        start: Result offset
+        sort_by: 'relevance', 'lastUpdatedDate', or 'submittedDate'
+        sort_order: 'ascending' or 'descending'
+
+    Returns:
+        URL-encoded query string (e.g., "search_query=ti:quantum+AND+au:einstein&max_results=10")
+    """
+    # Clamp max_results
+    max_results = min(max_results, 2000)
+
+    # Build search_query
+    terms = []
+
+    if title:
+        # Quote if multi-word
+        if " " in title.strip():
+            terms.append(f'ti:"{title.strip()}"')
+        else:
+            terms.append(f"ti:{title.strip()}")
+
+    if author:
+        if " " in author.strip():
+            terms.append(f'au:"{author.strip()}"')
+        else:
+            terms.append(f"au:{author.strip()}")
+
+    if abstract:
+        if " " in abstract.strip():
+            terms.append(f'abs:"{abstract.strip()}"')
+        else:
+            terms.append(f"abs:{abstract.strip()}")
+
+    if category:
+        terms.append(f"cat:{category.strip()}")
+
+    if all_fields:
+        if " " in all_fields.strip():
+            terms.append(f'all:"{all_fields.strip()}"')
+        else:
+            terms.append(f"all:{all_fields.strip()}")
+
+    # Build query
+    if not terms:
+        # No search terms provided
+        return ""
+
+    search_query = " AND ".join(terms)
+
+    # URL-encode the query
+    params = f"search_query={quote(search_query)}"
+    params += f"&max_results={max_results}"
+
+    if start > 0:
+        params += f"&start={start}"
+
+    if sort_by:
+        params += f"&sortBy={sort_by}"
+
+    if sort_order:
+        params += f"&sortOrder={sort_order}"
+
+    return params
 
 
 def parse_arxiv_atom(atom_xml: str) -> List[Dict[str, Any]]:
