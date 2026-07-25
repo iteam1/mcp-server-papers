@@ -104,12 +104,12 @@ Or:
 
 ## 📚 Reference
 
-- [arXiv API](https://info.arxiv.org/help/api/index.html)
+- [arXiv API](https://info.arxiv.org/help/api/index.html) - arXiv API Access
 
-- [arXiv API Terms of Use](https://info.arxiv.org/help/api/tou.html)
+- [arXiv API Terms of Use](https://info.arxiv.org/help/api/tou.html) - Terms of Use for arXiv APIs
 
-- [arXiv API Basics](https://info.arxiv.org/help/api/basics.html)
+- [arXiv API Basics](https://info.arxiv.org/help/api/basics.html) - arXiv API Basics
 
-- [arXiv API User Manual](https://info.arxiv.org/help/api/user-manual.html)
+- [arXiv API User Manual](https://info.arxiv.org/help/api/user-manual.html) - arXiv API User's Manual
 
-- [ArXiv MCP Server](https://github.com/blazickjp/arxiv-mcp-server)
+- [ArXiv MCP Server](https://github.com/blazickjp/arxiv-mcp-server) - A Model Context Protocol server for searching and analyzing arXiv papers
